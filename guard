@@ -1,0 +1,154 @@
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.Stage;
+
+import java.sql.*;
+import java.util.Optional;
+import java.util.concurrent.*;
+
+
+public class Bulwana231234481Guard extends Application {
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/2025%20security?serverTimezone=UTC";
+    private static final String DB_USER = "root";
+    private static final String DB_PASS = "";
+
+    private static final String CLIENT_CLEAR_PASSWORD = "3223"; 
+
+    private TextField txtInfo;
+    private Button btnAction;
+
+    private ScheduledExecutorService scheduler;
+    private Alarm current = null;
+
+    @Override
+    public void start(Stage primaryStage) {
+        txtInfo = new TextField();
+        txtInfo.setEditable(false);
+        btnAction = new Button();
+        btnAction.setVisible(false);
+
+        btnAction.setOnAction(e -> onActionPressed());
+
+        VBox root = new VBox(10, new Label("Guard"), txtInfo, btnAction);
+        root.setPadding(new Insets(10));
+        primaryStage.setTitle("Guard");
+        primaryStage.setScene(new Scene(root, 640, 140));
+        primaryStage.show();
+
+        startPolling();
+    }
+
+    private void startPolling() {
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(() -> {
+            Optional<Alarm> opt = getOldestOutstanding();
+            Platform.runLater(() -> updateUI(opt));
+        }, 0, 3, TimeUnit.SECONDS);
+    }
+
+    private void updateUI(Optional<Alarm> opt) {
+        if (!opt.isPresent()) {
+            current = null;
+            txtInfo.setText("No outstanding alarms");
+            btnAction.setVisible(false);
+            return;
+        }
+        current = opt.get();
+        txtInfo.setText(current.clientAddress + "  " + current.clientNumber);
+
+        String a = (current.actions == null) ? "" : current.actions;
+        if ("Dispatched".equalsIgnoreCase(a) || "idle".equalsIgnoreCase(a)) {
+            btnAction.setText("On my way");
+            btnAction.setVisible(true);
+        } else if ("Guard on his/her way".equalsIgnoreCase(a)) {
+            btnAction.setText("Arrived");
+            btnAction.setVisible(true);
+        } else if ("Arrived".equalsIgnoreCase(a)) {
+            btnAction.setText("Clear alarm");
+            btnAction.setVisible(true);
+        } else {
+            
+            btnAction.setVisible(false);
+        }
+    }
+
+    private void onActionPressed() {
+        if (current == null) return;
+        String a = current.actions == null ? "" : current.actions;
+        if ("Dispatched".equalsIgnoreCase(a) || "idle".equalsIgnoreCase(a)) {
+            updateActions(current.eventNum, "Guard on his/her way");
+        } else if ("Guard on his/her way".equalsIgnoreCase(a)) {
+            updateActions(current.eventNum, "Arrived");
+        } else if ("Arrived".equalsIgnoreCase(a)) {
+         
+            TextInputDialog dialog = new TextInputDialog();
+            dialog.setTitle("Client password");
+            dialog.setHeaderText("Enter the client's password (via telephone):");
+            dialog.setContentText("Password:");
+            dialog.showAndWait().ifPresent(pwd -> {
+                if (CLIENT_CLEAR_PASSWORD.equals(pwd)) {
+                    updateActions(current.eventNum, "Cleared");
+                } else {
+                    Alert al = new Alert(Alert.AlertType.ERROR, "Wrong password", ButtonType.OK);
+                    al.showAndWait();
+                }
+            });
+        }
+    }
+
+   
+    private Optional<Alarm> getOldestOutstanding() {
+        
+        String sql = "SELECT * FROM alarms WHERE actions <> 'Cleared' ORDER BY eventNum ASC LIMIT 1";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                Alarm a = new Alarm(rs.getInt("eventNum"),
+                        rs.getString("clientAddress"),
+                        rs.getString("clientNumber"),
+                        rs.getString("actions"));
+                return Optional.of(a);
+            }
+        } catch (SQLException ex) {
+            Platform.runLater(() -> txtInfo.setText("DB Error: " + ex.getMessage()));
+            ex.printStackTrace();
+        }
+        return Optional.empty();
+    }
+
+    private void updateActions(int eventNum, String actions) {
+        String sql = "UPDATE alarms SET actions = ? WHERE eventNum = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, actions);
+            ps.setInt(2, eventNum);
+            ps.executeUpdate();
+        } catch (SQLException ex) {
+            Platform.runLater(() -> txtInfo.setText("DB Error: " + ex.getMessage()));
+            ex.printStackTrace();
+        }
+    }
+
+    @Override
+    public void stop() {
+        if (scheduler != null) scheduler.shutdownNow();
+    }
+
+    private static class Alarm {
+        final int eventNum;
+        final String clientAddress;
+        final String clientNumber;
+        final String actions;
+        Alarm(int e, String a, String n, String act) { eventNum = e; clientAddress = a; clientNumber = n; actions = act; }
+    }
+
+    public static void main(String[] args) {
+        try { Class.forName("com.mysql.cj.jdbc.Driver"); } catch (Exception e) {}
+        launch(args);
+    }
+}
