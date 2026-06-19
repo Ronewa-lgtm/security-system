@@ -1,0 +1,109 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.sql.*;
+
+
+public class Ronewa230476007House {
+ 
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/2025%20security?serverTimezone=UTC";
+    private static final String DB_USER = "root";
+    private static final String DB_PASS = ""; 
+
+    private static final String ARM_CODE = "3223"; 
+    private boolean armed = false;
+
+    private JFrame screen;
+    private JLabel lblTop;
+    private JLabel lblStatus;
+    private JTextField txtAddress;
+    private JTextField txtCode;
+
+    public Ronewa230476007House() {
+        screen = new JFrame("screen"); 
+        screen.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        screen.setSize(520, 200);
+        screen.setLocationRelativeTo(null);
+
+      
+        lblTop = new JLabel("House", SwingConstants.CENTER);
+        lblTop.setFont(lblTop.getFont().deriveFont(18f));
+        screen.add(lblTop, BorderLayout.NORTH);
+
+      
+        JPanel grid = new JPanel(new GridLayout(2,3,4,4));
+        grid.add(createCenteredLabel("1"));
+        grid.add(createCenteredLabel("2"));
+        grid.add(createCenteredLabel("3"));
+
+        JButton btnMove = new JButton("move");
+        btnMove.addActionListener(e -> onMove());
+
+        lblStatus = new JLabel("Disarmed", SwingConstants.CENTER);
+
+        txtAddress = new JTextField("Symphony Way 123");
+
+        grid.add(btnMove);
+        grid.add(lblStatus);
+        grid.add(txtAddress);
+
+        screen.add(grid, BorderLayout.CENTER);
+
+      
+        JPanel bottom = new JPanel();
+        bottom.add(new JLabel("Code:"));
+        txtCode = new JTextField(6);
+        bottom.add(txtCode);
+        JButton btnEnter = new JButton("Enter");
+        btnEnter.addActionListener(e -> onEnterCode());
+        bottom.add(btnEnter);
+
+        screen.add(bottom, BorderLayout.SOUTH);
+
+        screen.setVisible(true);
+    }
+
+    private JLabel createCenteredLabel(String text) {
+        return new JLabel(text, SwingConstants.CENTER);
+    }
+
+    private void onEnterCode() {
+        String code = txtCode.getText().trim();
+        if (ARM_CODE.equals(code)) {
+            armed = !armed;
+            lblStatus.setText(armed ? "Armed" : "Disarmed");
+            JOptionPane.showMessageDialog(screen, "System is now " + (armed ? "Armed" : "Disarmed"));
+        } else {
+            JOptionPane.showMessageDialog(screen, "Incorrect code");
+        }
+        txtCode.setText("");
+    }
+
+    private void onMove() {
+        if (!armed) {
+            JOptionPane.showMessageDialog(screen, "System is Disarmed - no alarm sent.");
+            return;
+        }
+        String address = txtAddress.getText().trim();
+        if (address.isEmpty()) address = "Unknown address";
+
+      
+        String sql = "INSERT INTO alarms (clientAddress, clientNumber, actions) VALUES (?, ?, ?)";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, address);
+            ps.setString(2, "021 234 5678");
+            ps.setString(3, "idle");
+            ps.executeUpdate();
+            JOptionPane.showMessageDialog(screen, "Alarm sent to Control Room for: " + address);
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(screen, "DB Error: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) {
+        try { Class.forName("com.mysql.cj.jdbc.Driver"); } catch (Exception e) {}
+        SwingUtilities.invokeLater(Ronewa230476007House::new);
+    }
+}
